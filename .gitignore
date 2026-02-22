@@ -1,0 +1,25 @@
+# Virtual env
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Outputs
+outputs/
+
+# OS junk
+.DS_Store
+Thumbs.db
+# Hide dashboard and UI
+dashboard/
+visualization/
+
+# Hide experimental outputs
+outputs/
+
+# Optional: hide private configs
+*.env
+# Ignore trained models
+models/
+*.pkl
