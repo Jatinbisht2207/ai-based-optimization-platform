@@ -1,45 +1,49 @@
-import os
 import pandas as pd
 import numpy as np
-import joblib
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from utils.config import TARGET_COLUMN, TEST_SIZE
 
+
 class SARIMAModel:
     def train(self, df):
-        model_path = "models/sarima_model.pkl"
+        # Ensure chronological order
+        df = df.sort_values("Timestamp")
 
-        series = df[TARGET_COLUMN]
-        split_index = int(len(series) * (1 - TEST_SIZE))
-        train = series.iloc[:split_index]
-        test = series.iloc[split_index:]
-        # Create models folder
-        os.makedirs("models", exist_ok=True)
-        # If model exists → load it
-        if os.path.exists(model_path):
-            print("Loading existing SARIMA model...")
-            model_fit = joblib.load(model_path)
-        else:
-            print("Training SARIMA model...")
-            model = SARIMAX(
-                train,
-                order=(2, 1, 2),
-                seasonal_order=(1, 1, 1, 48),
-                enforce_stationarity=False,
-                enforce_invertibility=False
-            )
-            model_fit = model.fit(disp=False)
-            joblib.dump(model_fit, model_path)
-            print("SARIMA model saved.")
-        forecast = model_fit.forecast(steps=len(test))
+        split_index = int(len(df) * (1 - TEST_SIZE))
+
+        train = df.iloc[:split_index]
+        test = df.iloc[split_index:]
+
+        y_train = train[TARGET_COLUMN]
+        y_test = test[TARGET_COLUMN]
+
+        print("Training SARIMA model...")
+
+        # ✅ Correct seasonal order (daily seasonality: 48 steps)
+        model = SARIMAX(
+            y_train,
+            order=(1, 1, 1),
+            seasonal_order=(1, 0, 1, 48),
+            enforce_stationarity=False,
+            enforce_invertibility=False
+        )
+
+        fitted_model = model.fit(disp=False)
+
+        forecast = fitted_model.forecast(steps=len(test))
+
         metrics = {
-            "MAE": float(mean_absolute_error(test, forecast)),
-            "RMSE": float(np.sqrt(mean_squared_error(test, forecast))),
-            "R2": float(r2_score(test, forecast))
+            "MAE": float(mean_absolute_error(y_test, forecast)),
+            "RMSE": float(np.sqrt(mean_squared_error(y_test, forecast))),
+            "R2": float(r2_score(y_test, forecast))
         }
+
+        # Preserve Timestamp
         predictions_df = pd.DataFrame({
-            "Actual": test.values,
+            "Timestamp": test["Timestamp"].values,
+            "Actual": y_test.values,
             "Predicted": forecast.values
         })
-        return model_fit, metrics, predictions_df
+
+        return fitted_model, metrics, predictions_df
