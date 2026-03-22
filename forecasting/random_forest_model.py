@@ -7,6 +7,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from utils.config import TARGET_COLUMN, TEST_SIZE, RANDOM_STATE
 
 
+
 class RandomForestModel:
 
     def train_or_load(self, df, train_mode=True):
@@ -22,7 +23,7 @@ class RandomForestModel:
         train = df.iloc[:split_index]
         test = df.iloc[split_index:]
 
-        # Timestamp automatically excluded (not numeric)
+        # Select numeric features only (Timestamp excluded automatically)
         X_train = train.select_dtypes(include=["number"]).drop(columns=[TARGET_COLUMN])
         y_train = train[TARGET_COLUMN]
 
@@ -58,5 +59,4 @@ class RandomForestModel:
             "Actual": y_test.values,
             "Predicted": y_pred
         })
-
-        return model, metrics, predictions_df
+        return model, metrics, predictions_df, X_train
