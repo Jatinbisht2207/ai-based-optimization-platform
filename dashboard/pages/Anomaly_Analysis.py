@@ -3,12 +3,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 st.markdown(
     "<h1 style='text-align:center;'>Anomaly Intelligence Dashboard</h1>",
     unsafe_allow_html=True
 )
-
 
 # ===============================
 # SIDEBAR CONTROLS
@@ -38,7 +36,6 @@ view_option = st.sidebar.radio(
     ]
 )
 
-
 # ===============================
 # LOAD DATA
 # ===============================
@@ -53,7 +50,6 @@ df = pd.read_csv(file_map[model])
 df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 df = df.sort_values("Timestamp")
 
-
 # ===============================
 # ANOMALY COMPUTATION
 # ===============================
@@ -61,13 +57,23 @@ df["Residual"] = df["Actual"] - df["Predicted"]
 df["Z_score"] = (df["Residual"] - df["Residual"].mean()) / df["Residual"].std()
 df["Anomaly"] = np.abs(df["Z_score"]) > threshold
 
+# ===============================
+# DAILY AGGREGATION (🔥 MAIN FIX)
+# ===============================
+df_daily = df.resample("D", on="Timestamp").agg({
+    "Actual": "mean",
+    "Predicted": "mean",
+    "Anomaly": "sum"
+}).reset_index()
+
+df_daily["Anomaly_Flag"] = df_daily["Anomaly"] > 0
+
+# ===============================
+# METRICS
+# ===============================
 total_anomalies = df["Anomaly"].sum()
 anomaly_percent = (total_anomalies / len(df)) * 100
 
-
-# ===============================
-# SYSTEM STATUS
-# ===============================
 if anomaly_percent < 3:
     status = "System Stable"
 elif anomaly_percent < 7:
@@ -82,28 +88,38 @@ col3.metric("System Status", status)
 
 st.markdown("---")
 
-
 # ===============================
-# VISUALIZATION SWITCH
+# VISUALIZATION
 # ===============================
 
 if view_option == "Time Series":
 
-    fig, ax = plt.subplots(figsize=(12,4))
+    fig, ax = plt.subplots(figsize=(12, 4))
 
-    ax.plot(df["Timestamp"], df["Actual"], linewidth=1)
-
-    ax.scatter(
-        df["Timestamp"][df["Anomaly"]],
-        df["Actual"][df["Anomaly"]],
-        color="red",
-        s=25
+    # CLEAN DAILY TREND
+    ax.plot(
+        df_daily["Timestamp"],
+        df_daily["Actual"],
+        color="blue",
+        linewidth=2,
+        label="Daily Avg Energy"
     )
 
-    ax.set_title(f"{model} - Time-Based Anomaly Detection")
-    ax.set_xlabel("Time")
+    # ANOMALY DAYS ONLY
+    ax.scatter(
+        df_daily["Timestamp"][df_daily["Anomaly_Flag"]],
+        df_daily["Actual"][df_daily["Anomaly_Flag"]],
+        color="red",
+        s=60,
+        label="Anomaly Days"
+    )
+
+    ax.set_title(f"{model} - Daily Anomaly Trend (Clean View)")
+    ax.set_xlabel("Date")
     ax.set_ylabel("Energy")
-    ax.tick_params(axis='x', rotation=45)
+
+    ax.legend()
+    ax.grid(alpha=0.2)
 
     st.pyplot(fig)
 
@@ -113,35 +129,47 @@ elif view_option == "Rolling Density":
     df["Anomaly_Int"] = df["Anomaly"].astype(int)
     df["Rolling_Anomaly_Rate"] = df["Anomaly_Int"].rolling(48).mean()
 
-    fig, ax = plt.subplots(figsize=(12,4))
+    fig, ax = plt.subplots(figsize=(12, 4))
 
-    ax.plot(df["Timestamp"], df["Rolling_Anomaly_Rate"])
+    ax.plot(
+        df["Timestamp"],
+        df["Rolling_Anomaly_Rate"],
+        color="purple",
+        linewidth=2
+    )
 
-    ax.set_title("Rolling Anomaly Density (Daily Window)")
+    ax.fill_between(
+        df["Timestamp"],
+        df["Rolling_Anomaly_Rate"],
+        alpha=0.2,
+        color="purple"
+    )
+
+    ax.set_title("Rolling Anomaly Density")
     ax.set_ylabel("Anomaly Rate")
     ax.set_xlabel("Time")
 
-    ax.tick_params(axis='x', rotation=45)
+    ax.grid(alpha=0.2)
 
     st.pyplot(fig)
 
 
 elif view_option == "Residual Distribution":
 
-    fig, ax = plt.subplots(figsize=(8,4))
+    fig, ax = plt.subplots(figsize=(8, 4))
 
-    ax.hist(df["Residual"], bins=40)
+    ax.hist(df["Residual"], bins=40, color="skyblue", edgecolor="black")
 
     mean = df["Residual"].mean()
     std = df["Residual"].std()
 
-    ax.axvline(mean, linestyle="--")
-    ax.axvline(mean + threshold * std, linestyle="--")
-    ax.axvline(mean - threshold * std, linestyle="--")
+    ax.axvline(mean, linestyle="--", color="green", label="Mean")
+    ax.axvline(mean + threshold * std, linestyle="--", color="red", label="Threshold")
+    ax.axvline(mean - threshold * std, linestyle="--", color="red")
 
     ax.set_title("Residual Distribution")
-    ax.set_xlabel("Residual Value")
-    ax.set_ylabel("Frequency")
+    ax.legend()
+    ax.grid(alpha=0.2)
 
     st.pyplot(fig)
 
@@ -162,19 +190,13 @@ elif view_option == "Severity Breakdown":
         ["Normal", "Mild", "Moderate", "Severe"]
     ).fillna(0)
 
-    fig, ax = plt.subplots(figsize=(7,4))
+    fig, ax = plt.subplots(figsize=(7, 4))
 
     colors = ["#4CAF50", "#FFC107", "#FF9800", "#F44336"]
 
-    ax.bar(
-        severity_counts.index,
-        severity_counts.values,
-        color=colors
-    )
+    ax.bar(severity_counts.index, severity_counts.values, color=colors)
 
     ax.set_title("Anomaly Severity Breakdown")
-    ax.set_xlabel("Severity Level")
-    ax.set_ylabel("Number of Observations")
 
     for i, v in enumerate(severity_counts.values):
         ax.text(i, v + 1, str(int(v)), ha='center')
@@ -183,7 +205,7 @@ elif view_option == "Severity Breakdown":
 
 
 # ===============================
-# ANOMALY TABLE
+# TABLE
 # ===============================
 if st.sidebar.checkbox("Show Anomaly Table"):
 
