@@ -47,6 +47,12 @@ z_threshold = st.sidebar.slider(
 # ==========================================
 df = load_predictions(selected_model)
 
+df["Timestamp"] = pd.date_range(
+    start="2024-01-01",
+    periods=len(df),
+    freq="30T"
+)
+
 df["Residual"] = df["Actual"] - df["Predicted"]
 df["Z_score"] = (df["Residual"] - df["Residual"].mean()) / df["Residual"].std()
 df["Anomaly"] = np.abs(df["Z_score"]) > z_threshold
@@ -56,7 +62,6 @@ total_anomalies = int(df["Anomaly"].sum())
 total_wastage = float(df["Energy_Wastage"].sum())
 total_actual = float(df["Actual"].sum())
 
-# TRUE Efficiency
 efficiency = max(0, 1 - (total_wastage / total_actual))
 eff_percent = round(efficiency * 100, 1)
 
@@ -67,7 +72,6 @@ estimated_cost = total_wastage * tariff
 # ==========================================
 st.markdown("##  System Insights")
 
-# KPI Row
 c1, c2, c3 = st.columns(3)
 c1.metric("Total Anomalies", total_anomalies)
 c2.metric("Total Energy Wastage", round(total_wastage, 2))
@@ -86,47 +90,21 @@ with col_gauge:
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=eff_percent,
-        number={
-            "suffix": "%",
-            "font": {"size": 48, "color": "#2b6cb0"}
-        },
-        title={
-            "text": "System Efficiency",
-            "font": {"size": 20}
-        },
+        number={"suffix": "%", "font": {"size": 48, "color": "#2b6cb0"}},
+        title={"text": "System Efficiency"},
         gauge={
-            "axis": {
-                "range": [0, 100],
-                "tickwidth": 1,
-                "tickcolor": "#999"
-            },
-            "bar": {
-                "color": "#3182ce",
-                "thickness": 0.20
-            },
+            "axis": {"range": [0, 100]},
+            "bar": {"color": "#3182ce"},
             "steps": [
                 {"range": [0, 70], "color": "#fde2e2"},
                 {"range": [70, 85], "color": "#fff4d6"},
                 {"range": [85, 100], "color": "#e6f4ea"}
             ],
-            "threshold": {
-                "line": {"color": "#1f4e79", "width": 4},
-                "thickness": 0.9,
-                "value": eff_percent
-            },
-            "bgcolor": "white",
-            "borderwidth": 0
         }
     ))
 
-    fig.update_layout(
-        height=380,
-        margin=dict(l=20, r=20, t=40, b=10),
-        transition={'duration': 500}
-    )
-
+    fig.update_layout(height=380)
     st.plotly_chart(fig, use_container_width=True)
-
 
 # ---- RIGHT PANEL ----
 with col_info:
@@ -150,6 +128,55 @@ with col_info:
 
     st.markdown("---")
 
+    # ==========================================
+    # 🧠 DECISION LAYER (NEW)
+    # ==========================================
+    st.markdown("###  AI Decision Insights")
+
+    # Peak anomaly hour
+    anomaly_times = df[df["Anomaly"]]["Timestamp"]
+    peak_hour = (
+        anomaly_times.dt.hour.value_counts().idxmax()
+        if len(anomaly_times) > 0 else "N/A"
+    )
+
+    # Most inefficient day
+    df["Date"] = df["Timestamp"].dt.date
+    daily_wastage = df.groupby("Date")["Energy_Wastage"].sum()
+    worst_day = (
+        str(daily_wastage.idxmax())
+        if len(daily_wastage) > 0 else "N/A"
+    )
+
+    # Best model comparison
+    model_scores = {}
+    for model in ["Regression", "Random Forest", "ARIMA", "SARIMA"]:
+        temp_df = load_predictions(model)
+        mae = np.mean(np.abs(temp_df["Actual"] - temp_df["Predicted"]))
+        model_scores[model] = mae
+
+    best_model = min(model_scores, key=model_scores.get)
+
+    # Display metrics
+    st.write(f" Peak Anomaly Hour: {peak_hour}")
+    st.write(f" Most Inefficient Day: {worst_day}")
+    st.write(f" Best Model: {best_model}")
+
+    st.markdown("---")
+
+    # Recommendations
+    st.markdown("###  Recommendations")
+
+    if isinstance(peak_hour, int) and 17 <= peak_hour <= 22:
+        st.success("Reduce energy usage during evening peak hours")
+
+    if total_wastage > 0:
+        st.success("Optimize load distribution to reduce wastage")
+
+    st.success(f"Use {best_model} model for best accuracy")
+
+    st.markdown("---")
+
     st.download_button(
         " Export Financial Report",
         pd.DataFrame({
@@ -163,4 +190,3 @@ with col_info:
         "financial_report.csv",
         "text/csv"
     )
- 

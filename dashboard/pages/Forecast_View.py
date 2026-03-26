@@ -7,25 +7,25 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+
 from forecasting.future_predictor import predict_future_consumption
 from forecasting.future_predictor_v2 import predict_full_day
+from forecasting.lstm_model import predict_lstm
+
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-
-
-# =============================
-# SESSION STATE
-# =============================
-if "future_mode" not in st.session_state:
-    st.session_state.future_mode = False
-
-if "prediction_type" not in st.session_state:
-    st.session_state.prediction_type = None
 
 
 # =============================
 # PAGE CONFIG
 # =============================
 st.set_page_config(layout="wide")
+
+
+# =============================
+# SESSION STATE
+# =============================
+if "page_mode" not in st.session_state:
+    st.session_state.page_mode = "forecast"
 
 
 # =============================
@@ -40,7 +40,7 @@ aggregation = st.sidebar.selectbox(
 
 model_selector = st.sidebar.selectbox(
     "Forecast Model",
-    ["Regression", "Random Forest", "ARIMA", "SARIMA"]
+    ["Regression", "Random Forest", "ARIMA", "SARIMA", "LSTM"]
 )
 
 visual_type = st.sidebar.selectbox(
@@ -48,209 +48,261 @@ visual_type = st.sidebar.selectbox(
     ["Line Chart", "Bar Chart", "Pie Chart"]
 )
 
-# FUTURE FORECAST BUTTON
-if st.sidebar.button(" Future Energy Forecast"):
-    st.session_state.future_mode = True
-    st.session_state.prediction_type = None
+if st.sidebar.button("Prediction"):
+    st.session_state.page_mode = "prediction"
 
 
-# =====================================================
-# FUTURE FORECAST MODE (OVERRIDES WHOLE PAGE)
-# =====================================================
-if st.session_state.future_mode:
+# =============================
+# 🔮 PREDICTION PAGE
+# =============================
+if st.session_state.page_mode == "prediction":
 
-    # Top header with back button
-    col_title, col_back = st.columns([8,2])
+    st.title("Future Prediction")
 
-    with col_title:
-        st.title("🔮 Future Energy Forecast")
-
-    with col_back:
-        if st.button("⬅ Back to Forecast Intelligence"):
-            st.session_state.future_mode = False
-            st.session_state.prediction_type = None
-            st.rerun()
+    if st.button("Back"):
+        st.session_state.page_mode = "forecast"
+        st.rerun()
 
     col1, col2 = st.columns(2)
 
-    if col1.button("Timestamp Prediction"):
-        st.session_state.prediction_type = "timestamp"
+    # ---------------- TIMESTAMP ----------------
+    with col1:
+        st.subheader("Timestamp Prediction")
 
-    if col2.button("Full Day Prediction"):
-        st.session_state.prediction_type = "fullday"
+        selected_date = st.date_input("Select Date")
+        selected_time = st.time_input("Select Time")
 
+        if st.button("Run Timestamp Prediction"):
 
-# =============================
-# TIMESTAMP PREDICTION
-# =============================
-    if st.session_state.prediction_type == "timestamp":
-
-        st.subheader("Timestamp Energy Prediction")
-
-        future_datetime = st.datetime_input(
-            "Select Future Date & Time"
-        )
-
-        if st.button("Predict Energy"):
+            timestamp = pd.Timestamp.combine(selected_date, selected_time)
 
             try:
+                # ✅ FIX: Always use RF for real prediction (even if LSTM selected)
+                if model_selector in ["Random Forest", "LSTM"]:
+                    pred = predict_future_consumption(timestamp)
 
-                prediction = predict_future_consumption(future_datetime)
+                else:
+                    file_map = {
+                        "Regression": "outputs/regression_predictions.csv",
+                        "ARIMA": "outputs/arima_predictions.csv",
+                        "SARIMA": "outputs/sarima_predictions.csv"
+                    }
 
-                st.success(
-                    f"Predicted Energy Consumption: {prediction:.4f} kWh"
-                )
+                    df_temp = pd.read_csv(file_map[model_selector])
+                    pred = df_temp["Predicted"].iloc[-1]
+
+                st.success("Prediction Generated Successfully")
+                st.metric("Predicted Consumption", f"{pred:.4f}")
 
             except Exception as e:
+                st.error(f"Prediction Error: {e}")
 
-                st.error(f"Prediction failed: {e}")
+    # ---------------- DAY ----------------
+    with col2:
+        st.subheader("Day Prediction")
 
+        selected_day = st.date_input("Select Day", key="day_pred")
 
-# =============================
-# FULL DAY FORECAST
-# =============================
-    if st.session_state.prediction_type == "fullday":
-
-        st.subheader("24 Hour Energy Forecast")
-
-        future_date = st.date_input("Select Future Date")
-
-        if st.button("Generate Forecast"):
+        if st.button("Run Day Prediction"):
 
             try:
+                # ✅ FIX: RF used for both RF + LSTM
+                if model_selector in ["Random Forest", "LSTM"]:
+                    future_df = predict_full_day(selected_day)
 
-                df_future = predict_full_day(future_date)
+                else:
+                    file_map = {
+                        "Regression": "outputs/regression_predictions.csv",
+                        "ARIMA": "outputs/arima_predictions.csv",
+                        "SARIMA": "outputs/sarima_predictions.csv"
+                    }
 
-                st.dataframe(df_future)
+                    future_df = pd.read_csv(file_map[model_selector]).tail(48).copy()
+                    future_df = future_df.reset_index()
+                    future_df["Timestamp"] = pd.date_range(
+                        start=selected_day,
+                        periods=48,
+                        freq="30T"
+                    )
+                    future_df = future_df.rename(columns={
+                        "Predicted": "Predicted_Consumption"
+                    })
 
-                fig_future = go.Figure()
+                fig = go.Figure()
 
-                fig_future.add_trace(go.Scatter(
-                    x=df_future["Timestamp"],
-                    y=df_future["Predicted_Consumption"],
+                fig.add_trace(go.Scatter(
+                    x=future_df["Timestamp"],
+                    y=future_df["Predicted_Consumption"],
                     mode="lines",
-                    name="Forecast",
+                    name="Predicted",
                     line=dict(color="red")
                 ))
 
-                fig_future.update_layout(
-                    title="Future Energy Demand Curve",
-                    height=450
-                )
-
-                st.plotly_chart(fig_future, use_container_width=True)
-
-                peak_row = df_future.loc[
-                    df_future["Predicted_Consumption"].idxmax()
-                ]
-
-                low_row = df_future.loc[
-                    df_future["Predicted_Consumption"].idxmin()
-                ]
-
-                st.info(
-                    f" Peak Demand: {peak_row['Timestamp']}  \n"
-                    f" Lowest Demand: {low_row['Timestamp']}"
-                )
+                st.plotly_chart(fig, use_container_width=True)
 
             except Exception as e:
+                st.error(f"Prediction Error: {e}")
 
-                st.error(f"Prediction failed: {e}")
-
-
-# =====================================================
-# NORMAL FORECAST DASHBOARD
-# =====================================================
-else:
-
-    # =============================
-    # LOAD DATA
-    # =============================
-    model_file_map = {
-        "Regression": "outputs/regression_predictions.csv",
-        "Random Forest": "outputs/random_forest_predictions.csv",
-        "ARIMA": "outputs/arima_predictions.csv",
-        "SARIMA": "outputs/sarima_predictions.csv"
-    }
-
-    df = pd.read_csv(model_file_map[model_selector])
-
-    df["Timestamp"] = pd.date_range(
-        start="2024-01-01",
-        periods=len(df),
-        freq="30T"
-    )
-
-    df.set_index("Timestamp", inplace=True)
+    st.stop()
 
 
-    # =============================
-    # AGGREGATION
-    # =============================
-    if aggregation == "Hourly":
-        df_plot = df.resample("H").mean()
-    elif aggregation == "Daily":
-        df_plot = df.resample("D").mean()
-    else:
-        df_plot = df.copy()
+# =============================
+# LSTM MODE (TREND VIEW ONLY)
+# =============================
+if model_selector == "LSTM":
 
+    st.title("LSTM Forecast Intelligence")
 
-    # =============================
-    # METRICS
-    # =============================
-    mae = mean_absolute_error(df_plot["Actual"], df_plot["Predicted"])
-    rmse = np.sqrt(mean_squared_error(df_plot["Actual"], df_plot["Predicted"]))
-    accuracy = 100 - (mae / df_plot["Actual"].mean() * 100)
+    try:
+        df = predict_lstm()
 
+        st.success("LSTM Prediction Generated Successfully")
 
-    # =============================
-    # TITLE
-    # =============================
-    st.markdown(
-        "<h1 style='text-align:center;'>Advanced Forecast Intelligence</h1>",
-        unsafe_allow_html=True
-    )
+        mae = mean_absolute_error(df["Electricity_Consumed"], df["Predicted"])
+        rmse = np.sqrt(mean_squared_error(df["Electricity_Consumed"], df["Predicted"]))
+        accuracy = 100 - (mae / df["Electricity_Consumed"].mean() * 100)
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("MAE", f"{mae:.4f}")
-    m2.metric("RMSE", f"{rmse:.4f}")
-    m3.metric("Accuracy", f"{accuracy:.2f}%")
-
-
-    # =============================
-    # STATUS
-    # =============================
-    if accuracy > 85:
-        st.success("🟢 Excellent Forecast Performance")
-    elif accuracy > 70:
-        st.info("🟡 Moderate Forecast Performance")
-    else:
-        st.warning("🔴 Model Requires Optimization")
-
-
-    # =============================
-    # FORECAST GRAPH
-    # =============================
-    if visual_type == "Line Chart":
+        m1, m2, m3 = st.columns(3)
+        m1.metric("MAE", f"{mae:.4f}")
+        m2.metric("RMSE", f"{rmse:.4f}")
+        m3.metric("Accuracy", f"{accuracy:.2f}%")
 
         fig = go.Figure()
 
         fig.add_trace(go.Scatter(
-            x=df_plot.index,
-            y=df_plot["Actual"],
+            y=df["Electricity_Consumed"],
             mode="lines",
             name="Actual",
             line=dict(color="blue")
         ))
 
         fig.add_trace(go.Scatter(
-            x=df_plot.index,
-            y=df_plot["Predicted"],
+            y=df["Predicted"],
             mode="lines",
-            name="Predicted",
+            name="LSTM Predicted",
             line=dict(color="red")
         ))
 
-        fig.update_layout(height=420)
+        fig.update_layout(
+            title="LSTM Prediction vs Actual",
+            height=450
+        )
 
         st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"LSTM Error: {e}")
+
+    st.stop()
+
+
+# =============================
+# NORMAL MODELS
+# =============================
+model_file_map = {
+    "Regression": "outputs/regression_predictions.csv",
+    "Random Forest": "outputs/random_forest_predictions.csv",
+    "ARIMA": "outputs/arima_predictions.csv",
+    "SARIMA": "outputs/sarima_predictions.csv"
+}
+
+df = pd.read_csv(model_file_map[model_selector])
+
+df["Timestamp"] = pd.date_range(
+    start="2024-01-01",
+    periods=len(df),
+    freq="30T"
+)
+
+df.set_index("Timestamp", inplace=True)
+
+
+# =============================
+# AGGREGATION
+# =============================
+if aggregation == "Hourly":
+    df_plot = df.resample("H").mean()
+elif aggregation == "Daily":
+    df_plot = df.resample("D").mean()
+else:
+    df_plot = df.copy()
+
+
+# =============================
+# METRICS
+# =============================
+mae = mean_absolute_error(df_plot["Actual"], df_plot["Predicted"])
+rmse = np.sqrt(mean_squared_error(df_plot["Actual"], df_plot["Predicted"]))
+accuracy = 100 - (mae / df_plot["Actual"].mean() * 100)
+
+
+# =============================
+# TITLE
+# =============================
+st.markdown(
+    "<h1 style='text-align:center;'>Advanced Forecast Intelligence</h1>",
+    unsafe_allow_html=True
+)
+
+m1, m2, m3 = st.columns(3)
+m1.metric("MAE", f"{mae:.4f}")
+m2.metric("RMSE", f"{rmse:.4f}")
+m3.metric("Accuracy", f"{accuracy:.2f}%")
+
+
+# =============================
+# STATUS
+# =============================
+if accuracy > 85:
+    st.success("🟢 Excellent Forecast Performance")
+elif accuracy > 70:
+    st.info("🟡 Moderate Forecast Performance")
+else:
+    st.warning("🔴 Model Requires Optimization")
+
+
+# =============================
+# VISUALIZATION
+# =============================
+if visual_type == "Line Chart":
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=df_plot.index,
+        y=df_plot["Actual"],
+        mode="lines",
+        name="Actual",
+        line=dict(color="blue")
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=df_plot.index,
+        y=df_plot["Predicted"],
+        mode="lines",
+        name="Predicted",
+        line=dict(color="red")
+    ))
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+elif visual_type == "Bar Chart":
+
+    fig = go.Figure(data=[
+        go.Bar(name="Actual Avg", x=["Actual"], y=[df_plot["Actual"].mean()], marker_color="blue"),
+        go.Bar(name="Predicted Avg", x=["Predicted"], y=[df_plot["Predicted"].mean()], marker_color="red")
+    ])
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+elif visual_type == "Pie Chart":
+
+    fig = go.Figure(data=[go.Pie(
+        labels=["Actual Total", "Predicted Total"],
+        values=[df_plot["Actual"].sum(), df_plot["Predicted"].sum()],
+        hole=0.4
+    )])
+
+    st.plotly_chart(fig, use_container_width=True)

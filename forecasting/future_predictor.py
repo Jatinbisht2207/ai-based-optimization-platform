@@ -18,31 +18,51 @@ def predict_future_consumption(future_timestamp):
 
     future_timestamp = pd.to_datetime(future_timestamp)
 
-    last_row = df.iloc[-1].copy()
+    # ==============================
+    # 🔥 FIX: pick similar historical row
+    # ==============================
+    df["hour"] = df["Timestamp"].dt.hour
+    df["day_of_week"] = df["Timestamp"].dt.dayofweek
 
-    # update time features
-    last_row["hour"] = future_timestamp.hour
-    last_row["day"] = future_timestamp.day
-    last_row["month"] = future_timestamp.month
-    last_row["day_of_week"] = future_timestamp.dayofweek
+    similar_rows = df[
+        (df["hour"] == future_timestamp.hour) &
+        (df["day_of_week"] == future_timestamp.dayofweek)
+    ]
 
-    last_row["hour_sin"] = np.sin(2 * np.pi * future_timestamp.hour / 24)
-    last_row["hour_cos"] = np.cos(2 * np.pi * future_timestamp.hour / 24)
+    if len(similar_rows) > 0:
+        base_row = similar_rows.sample(1).iloc[0].copy()  # random similar pattern
+    else:
+        base_row = df.sample(1).iloc[0].copy()  # fallback random row
 
-    last_row["temp_hour_interaction"] = last_row["Temperature"] * last_row["hour"]
+    # ==============================
+    # UPDATE TIME FEATURES
+    # ==============================
+    base_row["hour"] = future_timestamp.hour
+    base_row["day"] = future_timestamp.day
+    base_row["month"] = future_timestamp.month
+    base_row["day_of_week"] = future_timestamp.dayofweek
 
-    # remove columns not used in training
+    base_row["hour_sin"] = np.sin(2 * np.pi * future_timestamp.hour / 24)
+    base_row["hour_cos"] = np.cos(2 * np.pi * future_timestamp.hour / 24)
+
+    base_row["temp_hour_interaction"] = base_row["Temperature"] * base_row["hour"]
+
+    # ==============================
+    # REMOVE UNUSED COLUMNS
+    # ==============================
     drop_cols = ["Electricity_Consumed", "Timestamp", "Anomaly_Label"]
 
     for col in drop_cols:
-        if col in last_row.index:
-            last_row = last_row.drop(col)
+        if col in base_row.index:
+            base_row = base_row.drop(col)
 
-    X_future = pd.DataFrame([last_row])
+    X_future = pd.DataFrame([base_row])
 
-    # FORCE SAME FEATURES AS TRAINING
+    # ==============================
+    # MATCH TRAINING FEATURES
+    # ==============================
     X_future = X_future[model.feature_names_in_]
 
     prediction = model.predict(X_future)[0]
 
-    return prediction
+    return float(prediction)

@@ -29,7 +29,11 @@ def predict_full_day(date):
     df = load_data()
     df = preprocess_data(df)
 
-    base_row = df.iloc[-1].copy()
+    # ==============================
+    # 🔥 ADD TIME FEATURES TO DATA
+    # ==============================
+    df["hour"] = df["Timestamp"].dt.hour
+    df["day_of_week"] = df["Timestamp"].dt.dayofweek
 
     timestamps = generate_daily_timestamps(date)
 
@@ -37,8 +41,22 @@ def predict_full_day(date):
 
     for ts in timestamps:
 
-        row = base_row.copy()
+        # ==============================
+        # 🔥 FIX: pick similar historical row
+        # ==============================
+        similar_rows = df[
+            (df["hour"] == ts.hour) &
+            (df["day_of_week"] == ts.dayofweek)
+        ]
 
+        if len(similar_rows) > 0:
+            row = similar_rows.sample(1).iloc[0].copy()
+        else:
+            row = df.sample(1).iloc[0].copy()
+
+        # ==============================
+        # UPDATE TIME FEATURES
+        # ==============================
         row["hour"] = ts.hour
         row["day"] = ts.day
         row["month"] = ts.month
@@ -49,6 +67,9 @@ def predict_full_day(date):
 
         row["temp_hour_interaction"] = row["Temperature"] * row["hour"]
 
+        # ==============================
+        # REMOVE UNUSED COLUMNS
+        # ==============================
         drop_cols = ["Electricity_Consumed", "Timestamp", "Anomaly_Label"]
 
         for col in drop_cols:
@@ -57,14 +78,16 @@ def predict_full_day(date):
 
         X = pd.DataFrame([row])
 
-        # FORCE SAME FEATURES AS TRAINING
+        # ==============================
+        # MATCH TRAINING FEATURES
+        # ==============================
         X = X[model.feature_names_in_]
 
         pred = model.predict(X)[0]
 
         predictions.append({
             "Timestamp": ts,
-            "Predicted_Consumption": pred
+            "Predicted_Consumption": float(pred)
         })
 
     result_df = pd.DataFrame(predictions)
