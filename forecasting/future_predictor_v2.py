@@ -13,13 +13,7 @@ MODEL_PATH = "models/random_forest_model.pkl"
 def generate_daily_timestamps(date):
 
     start = pd.to_datetime(date)
-
-    timestamps = []
-
-    for i in range(48):
-        timestamps.append(start + timedelta(minutes=30 * i))
-
-    return timestamps
+    return [start + timedelta(minutes=30 * i) for i in range(48)]
 
 
 def predict_full_day(date):
@@ -29,11 +23,7 @@ def predict_full_day(date):
     df = load_data()
     df = preprocess_data(df)
 
-    # ==============================
-    # 🔥 ADD TIME FEATURES TO DATA
-    # ==============================
     df["hour"] = df["Timestamp"].dt.hour
-    df["day_of_week"] = df["Timestamp"].dt.dayofweek
 
     timestamps = generate_daily_timestamps(date)
 
@@ -42,33 +32,30 @@ def predict_full_day(date):
     for ts in timestamps:
 
         # ==============================
-        # 🔥 FIX: pick similar historical row
+        # 🔥 KEY FIX: SAMPLE BASED ON HOUR
         # ==============================
-        similar_rows = df[
-            (df["hour"] == ts.hour) &
-            (df["day_of_week"] == ts.dayofweek)
-        ]
+        filtered = df[df["hour"] == ts.hour]
 
-        if len(similar_rows) > 0:
-            row = similar_rows.sample(1).iloc[0].copy()
+        if len(filtered) > 0:
+            row = filtered.sample(1).iloc[0].copy()
         else:
             row = df.sample(1).iloc[0].copy()
 
         # ==============================
-        # UPDATE TIME FEATURES
+        # TIME FEATURES
         # ==============================
         row["hour"] = ts.hour
         row["day"] = ts.day
         row["month"] = ts.month
         row["day_of_week"] = ts.dayofweek
 
-        row["hour_sin"] = np.sin(2 * np.pi * ts.hour / 24)
-        row["hour_cos"] = np.cos(2 * np.pi * ts.hour / 24)
+        row["hour_sin"] = np.sin(2 * np.pi * row["hour"] / 24)
+        row["hour_cos"] = np.cos(2 * np.pi * row["hour"] / 24)
 
         row["temp_hour_interaction"] = row["Temperature"] * row["hour"]
 
         # ==============================
-        # REMOVE UNUSED COLUMNS
+        # CLEAN FEATURES
         # ==============================
         drop_cols = ["Electricity_Consumed", "Timestamp", "Anomaly_Label"]
 
@@ -77,10 +64,6 @@ def predict_full_day(date):
                 row = row.drop(col)
 
         X = pd.DataFrame([row])
-
-        # ==============================
-        # MATCH TRAINING FEATURES
-        # ==============================
         X = X[model.feature_names_in_]
 
         pred = model.predict(X)[0]
@@ -90,6 +73,4 @@ def predict_full_day(date):
             "Predicted_Consumption": float(pred)
         })
 
-    result_df = pd.DataFrame(predictions)
-
-    return result_df
+    return pd.DataFrame(predictions)

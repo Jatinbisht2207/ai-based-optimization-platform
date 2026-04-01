@@ -38,18 +38,29 @@ aggregation = st.sidebar.selectbox(
     ["Detailed (30 Min)", "Hourly", "Daily"]
 )
 
-model_selector = st.sidebar.selectbox(
-    "Forecast Model",
-    ["Regression", "Random Forest", "ARIMA", "SARIMA", "LSTM"]
-)
+# 🔥 HIDE MODEL SELECTOR IN PREDICTION MODE
+if st.session_state.page_mode != "prediction":
+    model_selector = st.sidebar.selectbox(
+        "Forecast Model",
+        ["Regression", "Random Forest", "ARIMA", "SARIMA", "LSTM"]
+    )
+else:
+    model_selector = "Random Forest"  # FORCE RF
 
 visual_type = st.sidebar.selectbox(
     "Visualization",
     ["Line Chart", "Bar Chart", "Pie Chart"]
 )
 
-if st.sidebar.button("Prediction"):
-    st.session_state.page_mode = "prediction"
+# 🔥 TOGGLE BUTTON
+if st.session_state.page_mode == "forecast":
+    if st.sidebar.button("Prediction"):
+        st.session_state.page_mode = "prediction"
+        st.rerun()
+else:
+    if st.sidebar.button("Back to Forecast"):
+        st.session_state.page_mode = "forecast"
+        st.rerun()
 
 
 # =============================
@@ -58,10 +69,6 @@ if st.sidebar.button("Prediction"):
 if st.session_state.page_mode == "prediction":
 
     st.title("Future Prediction")
-
-    if st.button("Back"):
-        st.session_state.page_mode = "forecast"
-        st.rerun()
 
     col1, col2 = st.columns(2)
 
@@ -77,19 +84,8 @@ if st.session_state.page_mode == "prediction":
             timestamp = pd.Timestamp.combine(selected_date, selected_time)
 
             try:
-                # ✅ FIX: Always use RF for real prediction (even if LSTM selected)
-                if model_selector in ["Random Forest", "LSTM"]:
-                    pred = predict_future_consumption(timestamp)
-
-                else:
-                    file_map = {
-                        "Regression": "outputs/regression_predictions.csv",
-                        "ARIMA": "outputs/arima_predictions.csv",
-                        "SARIMA": "outputs/sarima_predictions.csv"
-                    }
-
-                    df_temp = pd.read_csv(file_map[model_selector])
-                    pred = df_temp["Predicted"].iloc[-1]
+                # 🔥 ALWAYS RF
+                pred = predict_future_consumption(timestamp)
 
                 st.success("Prediction Generated Successfully")
                 st.metric("Predicted Consumption", f"{pred:.4f}")
@@ -106,27 +102,8 @@ if st.session_state.page_mode == "prediction":
         if st.button("Run Day Prediction"):
 
             try:
-                # ✅ FIX: RF used for both RF + LSTM
-                if model_selector in ["Random Forest", "LSTM"]:
-                    future_df = predict_full_day(selected_day)
-
-                else:
-                    file_map = {
-                        "Regression": "outputs/regression_predictions.csv",
-                        "ARIMA": "outputs/arima_predictions.csv",
-                        "SARIMA": "outputs/sarima_predictions.csv"
-                    }
-
-                    future_df = pd.read_csv(file_map[model_selector]).tail(48).copy()
-                    future_df = future_df.reset_index()
-                    future_df["Timestamp"] = pd.date_range(
-                        start=selected_day,
-                        periods=48,
-                        freq="30T"
-                    )
-                    future_df = future_df.rename(columns={
-                        "Predicted": "Predicted_Consumption"
-                    })
+                # 🔥 ALWAYS RF
+                future_df = predict_full_day(selected_day)
 
                 fig = go.Figure()
 
@@ -182,11 +159,6 @@ if model_selector == "LSTM":
             name="LSTM Predicted",
             line=dict(color="red")
         ))
-
-        fig.update_layout(
-            title="LSTM Prediction vs Actual",
-            height=450
-        )
 
         st.plotly_chart(fig, use_container_width=True)
 
