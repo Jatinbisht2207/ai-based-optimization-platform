@@ -181,7 +181,7 @@ def render_page():
     df["Timestamp"] = pd.date_range(
         start="2024-01-01",
         periods=len(df),
-        freq="30T"
+        freq="30min"
     )
 
     df.set_index("Timestamp", inplace=True)
