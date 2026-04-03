@@ -177,11 +177,11 @@ def render_page():
 
     df = pd.read_csv(model_file_map[model_selector])
 
-    # ✅ ONLY CHANGE HERE (Timestamp fix)
+    # ✅ ONLY FINAL FIX HERE
     df["Timestamp"] = pd.date_range(
         start=pd.Timestamp("2024-01-01"),
         periods=len(df),
-        freq=pd.Timedelta(minutes=30)
+        freq=pd.offsets.Minute(30)
     )
 
     df.set_index("Timestamp", inplace=True)
