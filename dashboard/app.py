@@ -1,13 +1,5 @@
 import streamlit as st
 
-# Import all page render functions
-from pages.Forecast_View import render_page as render_forecast
-from pages.Model_Comparison import render_page as render_model_comparison
-from pages.System_Insights import render_page as render_system_insights
-from pages.Wastage_Analysis import render_page as render_wastage_analysis
-from pages.Anomaly_Analysis import render_page as render_anomaly_analysis
-
-
 # ===============================
 # PAGE CONFIG
 # ===============================
@@ -17,35 +9,32 @@ st.set_page_config(
 )
 
 # ===============================
-# SIDEBAR NAVIGATION
+# IMPORT PAGES
 # ===============================
-st.sidebar.title("app")
-
-page = st.sidebar.radio(
-    "Navigate",
-    [
-        "Anomaly Analysis",
-        "Forecast View",
-        "Model Comparison",
-        "System Insights",
-        "Wastage Analysis"
-    ]
-)
+from pages.Forecast_View import render_page as forecast
+from pages.Model_Comparison import render_page as model_comparison
+from pages.System_Insights import render_page as system_insights
+from pages.Wastage_Analysis import render_page as wastage
+from pages.Anomaly_Analysis import render_page as anomaly
 
 # ===============================
-# ROUTING
+# SIDEBAR
 # ===============================
-if page == "Forecast View":
-    render_forecast()
+st.title(" AI-Based Smart Energy Optimization Platform")
+st.markdown("---")
+st.sidebar.title(" Energy Optimization App")
 
-elif page == "Model Comparison":
-    render_model_comparison()
+pages = {
+    " Forecast View": forecast,
+    " Model Comparison": model_comparison,
+    " System Insights": system_insights,
+    " Wastage Analysis": wastage,
+    " Anomaly Analysis": anomaly
+}
 
-elif page == "System Insights":
-    render_system_insights()
+selected_page = st.sidebar.radio("Navigate", list(pages.keys()))
 
-elif page == "Wastage Analysis":
-    render_wastage_analysis()
-
-elif page == "Anomaly Analysis":
-    render_anomaly_analysis()
+# ===============================
+# RENDER SELECTED PAGE
+# ===============================
+pages[selected_page]()
