@@ -126,7 +126,6 @@ def render_page():
 
         st.title("LSTM Forecast Intelligence")
 
-        # ✅ DEPLOYMENT SAFETY CHECK
         if not LSTM_AVAILABLE:
             st.error("⚠️ LSTM not available in deployed environment")
             st.stop()
@@ -178,10 +177,11 @@ def render_page():
 
     df = pd.read_csv(model_file_map[model_selector])
 
+    # ✅ ONLY CHANGE HERE (Timestamp fix)
     df["Timestamp"] = pd.date_range(
-        start="2024-01-01",
+        start=pd.Timestamp("2024-01-01"),
         periods=len(df),
-        freq="30min"
+        freq=pd.Timedelta(minutes=30)
     )
 
     df.set_index("Timestamp", inplace=True)
