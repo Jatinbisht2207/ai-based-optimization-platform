@@ -11,7 +11,13 @@ def render_page():
 
     from forecasting.future_predictor import predict_future_consumption
     from forecasting.future_predictor_v2 import predict_full_day
-    from forecasting.lstm_model import predict_lstm
+
+    # ✅ SAFE IMPORT (DEPLOYMENT FIX)
+    try:
+        from forecasting.lstm_model import predict_lstm
+        LSTM_AVAILABLE = True
+    except:
+        LSTM_AVAILABLE = False
 
     from sklearn.metrics import mean_absolute_error, mean_squared_error
 
@@ -39,7 +45,6 @@ def render_page():
         ["Detailed (30 Min)", "Hourly", "Daily"]
     )
 
-    # 🔥 HIDE MODEL SELECTOR IN PREDICTION MODE
     if st.session_state.page_mode != "prediction":
         model_selector = st.sidebar.selectbox(
             "Forecast Model",
@@ -121,6 +126,11 @@ def render_page():
 
         st.title("LSTM Forecast Intelligence")
 
+        # ✅ DEPLOYMENT SAFETY CHECK
+        if not LSTM_AVAILABLE:
+            st.error("⚠️ LSTM not available in deployed environment")
+            st.stop()
+
         try:
             df = predict_lstm()
 
@@ -199,7 +209,6 @@ def render_page():
     m1.metric("MAE", f"{mae:.4f}")
     m2.metric("RMSE", f"{rmse:.4f}")
     m3.metric("Accuracy", f"{accuracy:.2f}%")
-
 
     if accuracy > 85:
         st.success("🟢 Excellent Forecast Performance")

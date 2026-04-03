@@ -1,12 +1,12 @@
 # ============================================
 # 🔥 FINAL LSTM PREDICTION MODULE
 # (FIXED - CHANGE BASED + NEW SCALERS)
+# (DEPLOYMENT SAFE VERSION)
 # ============================================
 
 import numpy as np
 import pandas as pd
 import joblib
-from tensorflow.keras.models import load_model
 
 from ingestion.data_loader import load_data
 from preprocessing.preprocess import preprocess_data
@@ -26,6 +26,12 @@ TIME_STEPS = 48
 # MAIN FUNCTION
 # ==============================
 def predict_lstm():
+
+    # 🔥 LAZY IMPORT (IMPORTANT FOR DEPLOYMENT)
+    try:
+        from tensorflow.keras.models import load_model
+    except ImportError:
+        raise ImportError("TensorFlow not available in this environment")
 
     # Load model & scalers
     model = load_model(MODEL_PATH, compile=False)
