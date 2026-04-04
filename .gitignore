@@ -11,11 +11,14 @@ __pycache__/
 *.pyc
 
 # =========================
-# Models (VERY IMPORTANT)
+# Models (CONTROLLED)
 # =========================
-models/
-*.pkl
-*.h5
+models/*
+!models/random_forest_model.pkl
+!models/regression_model.pkl
+!models/lstm_model.h5
+!models/lstm_feature_scaler.pkl
+!models/lstm_target_scaler.pkl
 
 # =========================
 # OS junk

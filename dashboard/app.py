@@ -12,6 +12,7 @@ st.set_page_config(
 # IMPORT PAGES
 # ===============================
 from my_pages.Forecast_View import render_page as forecast
+from my_pages.Explainability_Insights import render_page as explainability
 from my_pages.Model_Comparison import render_page as model_comparison
 from my_pages.System_Insights import render_page as system_insights
 from my_pages.Wastage_Analysis import render_page as wastage
@@ -26,6 +27,7 @@ st.sidebar.markdown("---")
 pages = {
     " Home": "home",
     " Anomaly Analysis": anomaly,
+    " Explainability Insights": explainability,
     " Forecast View": forecast,
     " Model Comparison": model_comparison,
     " System Insights": system_insights,
